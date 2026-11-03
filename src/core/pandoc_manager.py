@@ -261,3 +261,4 @@ def download_and_extract_pandoc(
         progress_callback(100.0, f"Pandoc {tag} instalado exitosamente.")
 
     return target_path
+

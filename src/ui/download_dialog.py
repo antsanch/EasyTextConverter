@@ -125,3 +125,4 @@ class PandocDownloadDialog(QDialog):
         if self.download_thread and self.download_thread.isRunning():
             self.download_thread.terminate()
         event.accept()
+

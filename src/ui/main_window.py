@@ -1,7 +1,8 @@
 """
 Main Application Window for Pandoc GUI.
-Provides a clean, modern interface with a large Markdown text editor
-and one-click export buttons on top, especially optimized for Scribus (ODT).
+Provides a clean, modern interface with a large Markdown text editor,
+one-click export buttons on top, especially optimized for Scribus (ODT),
+and an intelligent Markdown auto-formatter to fix glued headings and lists.
 """
 
 import os
@@ -18,6 +19,7 @@ from PyQt6.QtGui import QFont, QKeySequence, QShortcut, QAction
 
 from src.core.pandoc_manager import find_pandoc
 from src.core.converter import convert_markdown, FORMAT_CONFIG
+from src.core.formatter import auto_format_markdown, has_potential_formatting_defects
 from src.ui.download_dialog import PandocDownloadDialog
 
 
@@ -25,8 +27,8 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Pandoc GUI - Conversor Markdown para Scribus y Documentos")
-        self.resize(960, 680)
-        self.setMinimumSize(750, 480)
+        self.resize(980, 700)
+        self.setMinimumSize(780, 500)
 
         self.pandoc_path = None
         self.pandoc_version = None
@@ -51,13 +53,14 @@ class MainWindow(QMainWindow):
         self.editor.setPlaceholderText(
             "Pega aquí tu texto en Markdown...\n\n"
             "Ejemplo:\n"
-            "# Título Principal (se convierte en estilo Heading 1 para Scribus)\n"
-            "Este es un párrafo con texto en **negrita**, *cursiva* y una [url](https://...).\n\n"
-            "## Subtítulo (Heading 2)\n"
+            "# Título Principal (se convierte en estilo Heading 1 para Scribus y LibreOffice)\n\n"
+            "Este es un párrafo con texto en **negrita**, *cursiva* y un [enlace](https://...).\n\n"
+            "## Subtítulo de Sección (Heading 2)\n\n"
             "- Elemento de lista 1\n"
             "- Elemento de lista 2\n\n"
             "> Cita en bloque estilizada.\n\n"
-            "Luego haz clic arriba en '📥 Guardar ODT (Scribus)' para importarlo directamente en tu maqueta."
+            "💡 Tip: Si tu texto viene de PDF o web con títulos pegados sin saltos de línea,\n"
+            "haz clic arriba en '✨ Auto-formatear' antes de exportar a ODT."
         )
 
         # Configure font
@@ -90,6 +93,7 @@ class MainWindow(QMainWindow):
 
         # Keyboard shortcuts
         QShortcut(QKeySequence("Ctrl+Shift+S"), self, lambda: self._on_export_clicked("odt"))
+        QShortcut(QKeySequence("Ctrl+Shift+F"), self, self._on_auto_format_clicked)
         QShortcut(QKeySequence("Ctrl+N"), self, self._clear_text)
 
     def _create_top_toolbar(self) -> QWidget:
@@ -100,7 +104,7 @@ class MainWindow(QMainWindow):
 
         # PROMINENT SCRIBUS / ODT BUTTON
         self.btn_odt = QPushButton("📥 Guardar ODT (Scribus)")
-        self.btn_odt.setToolTip("Exportar a OpenDocument Text (.odt) optimizado para importar estilos y títulos en Scribus")
+        self.btn_odt.setToolTip("Exportar a OpenDocument Text (.odt) optimizado para Scribus y LibreOffice (Ctrl+Shift+S)")
         self.btn_odt.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_odt.setStyleSheet("""
             QPushButton {
@@ -143,7 +147,7 @@ class MainWindow(QMainWindow):
                     font-weight: 500;
                     border: 1px solid #cbd5e1;
                     border-radius: 6px;
-                    padding: 9px 13px;
+                    padding: 9px 12px;
                 }
                 QPushButton:hover {
                     background-color: #e2e8f0;
@@ -156,6 +160,31 @@ class MainWindow(QMainWindow):
             """)
             btn.clicked.connect(lambda checked=False, k=fmt_key: self._on_export_clicked(k))
             layout.addWidget(btn)
+
+        # AUTO-FORMAT BUTTON
+        btn_format = QPushButton("✨ Auto-formatear")
+        btn_format.setToolTip("Reparar títulos, listas y estilos pegados sin saltos de línea (Ctrl+Shift+F)")
+        btn_format.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_format.setStyleSheet("""
+            QPushButton {
+                background-color: #f0fdf4;
+                color: #15803d;
+                font-size: 12px;
+                font-weight: bold;
+                border: 1px solid #86efac;
+                border-radius: 6px;
+                padding: 9px 14px;
+            }
+            QPushButton:hover {
+                background-color: #dcfce7;
+                border-color: #4ade80;
+            }
+            QPushButton:pressed {
+                background-color: #bbf7d0;
+            }
+        """)
+        btn_format.clicked.connect(self._on_auto_format_clicked)
+        layout.addWidget(btn_format)
 
         # Spacer to push utility buttons to the right
         layout.addStretch()
@@ -249,6 +278,19 @@ class MainWindow(QMainWindow):
         words = len(text.split()) if text.strip() else 0
         chars = len(text)
         self.stats_label.setText(f"{words:,} palabras | {chars:,} caracteres")
+
+    def _on_auto_format_clicked(self):
+        content = self.editor.toPlainText()
+        if not content.strip():
+            self._set_status("El editor está vacío. Pega primero tu texto.")
+            return
+
+        repaired, count = auto_format_markdown(content)
+        if count > 0:
+            self.editor.setPlainText(repaired)
+            self._set_status(f"✨ ¡Markdown reparado con éxito! Se aplicaron {count} correcciones de títulos/listas/espaciado.")
+        else:
+            self._set_status("El texto ya tiene una estructura correcta de Markdown.")
 
     def _paste_clipboard(self):
         clipboard = QApplication.clipboard()
@@ -355,6 +397,28 @@ class MainWindow(QMainWindow):
             )
             return
 
+        # Check for glued headings defect
+        if format_key != "md" and has_potential_formatting_defects(content):
+            box = QMessageBox(self)
+            box.setIcon(QMessageBox.Icon.Warning)
+            box.setWindowTitle("Aviso de Estructura Markdown")
+            box.setText(
+                "Se detectaron títulos o encabezados pegados directamente al texto sin saltos de línea.\n\n"
+                "Si se convierte así, Pandoc interpretará todo el párrafo como parte del título.\n\n"
+                "¿Deseas auto-formatear y reparar la estructura automáticamente antes de guardar?"
+            )
+            btn_fix = box.addButton("Auto-formatear y Guardar", QMessageBox.ButtonRole.AcceptRole)
+            btn_ignore = box.addButton("Guardar tal cual", QMessageBox.ButtonRole.ActionRole)
+            box.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+            box.exec()
+
+            if box.clickedButton() == btn_fix:
+                content, count = auto_format_markdown(content)
+                self.editor.setPlainText(content)
+                self._set_status(f"✨ Se repararon {count} títulos antes de guardar.")
+            elif box.clickedButton() != btn_ignore:
+                return
+
         # Ensure Pandoc is available (not required for raw .md save)
         if format_key != "md":
             if not self.pandoc_path:
@@ -397,7 +461,6 @@ class MainWindow(QMainWindow):
         if success:
             self._set_status(f"¡Guardado correctamente en: {os.path.basename(output_file)}!")
             
-            # Offer to open the folder or file
             box = QMessageBox(self)
             box.setIcon(QMessageBox.Icon.Information)
             box.setWindowTitle("Conversión Exitosa")
@@ -405,11 +468,9 @@ class MainWindow(QMainWindow):
             scribus_hint = ""
             if format_key == "odt":
                 scribus_hint = (
-                    "\n\n📌 Para usarlo en Scribus:\n"
-                    "1. Crea un marco de texto en tu página de Scribus.\n"
-                    "2. Haz clic derecho en el marco y selecciona 'Obtener texto...'.\n"
-                    "3. Selecciona este archivo .odt y marca importar estilos.\n"
-                    "¡Tus títulos H1, H2, negritas y párrafos se asignarán a estilos de Scribus!"
+                    "\n\n📌 Para usarlo en Scribus o LibreOffice:\n"
+                    "• LibreOffice: Ábrelo directamente y verás los estilos Heading 1, 2, 3 en la barra de estilos.\n"
+                    "• Scribus: Crea un marco de texto, clic derecho → 'Obtener texto...', selecciona este .odt y marca 'importar estilos'."
                 )
             
             box.setText(f"El archivo fue generado exitosamente:\n{output_file}{scribus_hint}")

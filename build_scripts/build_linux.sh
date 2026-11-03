@@ -23,3 +23,4 @@ pyinstaller \
 
 echo "=== Compilación completada con éxito ==="
 echo "El ejecutable se encuentra en: dist/pandoc-gui"
+

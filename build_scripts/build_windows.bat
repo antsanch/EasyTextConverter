@@ -17,3 +17,4 @@ pyinstaller --name "pandoc-gui" ^
 echo === Compilacion finalizada ===
 echo El archivo ejecutable esta en: dist\pandoc-gui.exe
 pause
+
