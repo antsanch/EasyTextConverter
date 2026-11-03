@@ -2,7 +2,7 @@
 Main Application Window for Pandoc GUI.
 Provides a clean, modern interface with a large Markdown text editor,
 one-click export buttons on top, especially optimized for Scribus (ODT),
-and an intelligent Markdown auto-formatter to fix glued headings and lists.
+and a utility to convert literal '\\n' into real line breaks.
 """
 
 import os
@@ -19,7 +19,7 @@ from PyQt6.QtGui import QFont, QKeySequence, QShortcut, QAction
 
 from src.core.pandoc_manager import find_pandoc
 from src.core.converter import convert_markdown, FORMAT_CONFIG
-from src.core.formatter import auto_format_markdown, has_potential_formatting_defects
+from src.core.formatter import replace_escaped_newlines, has_escaped_newlines
 from src.ui.download_dialog import PandocDownloadDialog
 
 
@@ -59,8 +59,8 @@ class MainWindow(QMainWindow):
             "- Elemento de lista 1\n"
             "- Elemento de lista 2\n\n"
             "> Cita en bloque estilizada.\n\n"
-            "💡 Tip: Si tu texto viene de PDF o web con títulos pegados sin saltos de línea,\n"
-            "haz clic arriba en '✨ Auto-formatear' antes de exportar a ODT."
+            "💡 Tip: Si tu texto contiene '\\n' literales (provenientes de APIs o código),\n"
+            "haz clic arriba en '↵ Reemplazar \\n' para convertirlos en retornos de carro reales."
         )
 
         # Configure font
@@ -93,7 +93,7 @@ class MainWindow(QMainWindow):
 
         # Keyboard shortcuts
         QShortcut(QKeySequence("Ctrl+Shift+S"), self, lambda: self._on_export_clicked("odt"))
-        QShortcut(QKeySequence("Ctrl+Shift+F"), self, self._on_auto_format_clicked)
+        QShortcut(QKeySequence("Ctrl+Shift+R"), self, self._on_replace_newlines_clicked)
         QShortcut(QKeySequence("Ctrl+N"), self, self._clear_text)
 
     def _create_top_toolbar(self) -> QWidget:
@@ -161,11 +161,11 @@ class MainWindow(QMainWindow):
             btn.clicked.connect(lambda checked=False, k=fmt_key: self._on_export_clicked(k))
             layout.addWidget(btn)
 
-        # AUTO-FORMAT BUTTON
-        btn_format = QPushButton("✨ Auto-formatear")
-        btn_format.setToolTip("Reparar títulos, listas y estilos pegados sin saltos de línea (Ctrl+Shift+F)")
-        btn_format.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_format.setStyleSheet("""
+        # REPLACE \n BUTTON
+        self.btn_replace_nl = QPushButton("↵ Reemplazar \\n")
+        self.btn_replace_nl.setToolTip("Convierte secuencias literales '\\n' en saltos de línea reales (Ctrl+Shift+R)")
+        self.btn_replace_nl.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_replace_nl.setStyleSheet("""
             QPushButton {
                 background-color: #f0fdf4;
                 color: #15803d;
@@ -173,7 +173,7 @@ class MainWindow(QMainWindow):
                 font-weight: bold;
                 border: 1px solid #86efac;
                 border-radius: 6px;
-                padding: 9px 14px;
+                padding: 9px 13px;
             }
             QPushButton:hover {
                 background-color: #dcfce7;
@@ -183,8 +183,8 @@ class MainWindow(QMainWindow):
                 background-color: #bbf7d0;
             }
         """)
-        btn_format.clicked.connect(self._on_auto_format_clicked)
-        layout.addWidget(btn_format)
+        self.btn_replace_nl.clicked.connect(self._on_replace_newlines_clicked)
+        layout.addWidget(self.btn_replace_nl)
 
         # Spacer to push utility buttons to the right
         layout.addStretch()
@@ -279,18 +279,18 @@ class MainWindow(QMainWindow):
         chars = len(text)
         self.stats_label.setText(f"{words:,} palabras | {chars:,} caracteres")
 
-    def _on_auto_format_clicked(self):
+    def _on_replace_newlines_clicked(self):
         content = self.editor.toPlainText()
         if not content.strip():
-            self._set_status("El editor está vacío. Pega primero tu texto.")
+            self._set_status("El editor está vacío.")
             return
 
-        repaired, count = auto_format_markdown(content)
+        repaired, count = replace_escaped_newlines(content)
         if count > 0:
             self.editor.setPlainText(repaired)
-            self._set_status(f"✨ ¡Markdown reparado con éxito! Se aplicaron {count} correcciones de títulos/listas/espaciado.")
+            self._set_status(f"✓ ¡Listo! Se reemplazaron {count} '\\n' por retornos de carro reales.")
         else:
-            self._set_status("El texto ya tiene una estructura correcta de Markdown.")
+            self._set_status("No se encontraron secuencias '\\n' en el texto.")
 
     def _paste_clipboard(self):
         clipboard = QApplication.clipboard()
@@ -397,26 +397,25 @@ class MainWindow(QMainWindow):
             )
             return
 
-        # Check for glued headings defect
-        if format_key != "md" and has_potential_formatting_defects(content):
+        # Check for literal '\n' sequences in text
+        if has_escaped_newlines(content):
             box = QMessageBox(self)
-            box.setIcon(QMessageBox.Icon.Warning)
-            box.setWindowTitle("Aviso de Estructura Markdown")
+            box.setIcon(QMessageBox.Icon.Question)
+            box.setWindowTitle("Secuencias \\n detectadas")
             box.setText(
-                "Se detectaron títulos o encabezados pegados directamente al texto sin saltos de línea.\n\n"
-                "Si se convierte así, Pandoc interpretará todo el párrafo como parte del título.\n\n"
-                "¿Deseas auto-formatear y reparar la estructura automáticamente antes de guardar?"
+                "Se detectaron secuencias literales '\\n' en el texto.\n\n"
+                "¿Deseas reemplazarlas por retornos de carro reales antes de guardar?"
             )
-            btn_fix = box.addButton("Auto-formatear y Guardar", QMessageBox.ButtonRole.AcceptRole)
-            btn_ignore = box.addButton("Guardar tal cual", QMessageBox.ButtonRole.ActionRole)
+            btn_replace = box.addButton("Reemplazar \\n y Guardar", QMessageBox.ButtonRole.AcceptRole)
+            btn_keep = box.addButton("Guardar tal cual", QMessageBox.ButtonRole.ActionRole)
             box.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
             box.exec()
 
-            if box.clickedButton() == btn_fix:
-                content, count = auto_format_markdown(content)
+            if box.clickedButton() == btn_replace:
+                content, count = replace_escaped_newlines(content)
                 self.editor.setPlainText(content)
-                self._set_status(f"✨ Se repararon {count} títulos antes de guardar.")
-            elif box.clickedButton() != btn_ignore:
+                self._set_status(f"✓ Se reemplazaron {count} '\\n' por retornos de carro.")
+            elif box.clickedButton() != btn_keep:
                 return
 
         # Ensure Pandoc is available (not required for raw .md save)
