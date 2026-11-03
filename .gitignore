@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+
+# PyInstaller / Build
+build/
+dist/
+*.spec
+
+# User local app data
+.cache/
