@@ -1,5 +1,7 @@
 """
 Handles conversion of Markdown text to various target formats using Pandoc.
+Uses GFM (GitHub Flavored Markdown) with footnotes to ensure lists, headers,
+tables, and code fences are parsed without requiring artificial blank lines.
 """
 
 import os
@@ -8,36 +10,40 @@ import platform
 from typing import Dict, Any, Optional, Tuple
 
 # Supported formats and their metadata
+# We use 'gfm+footnotes' as the input format because default Pandoc 'markdown'
+# requires blank lines before every list and header; without them, lists collapse into plain text.
+INPUT_FORMAT = "gfm+footnotes"
+
 FORMAT_CONFIG: Dict[str, Dict[str, Any]] = {
     "odt": {
         "name": "ODT (Scribus / LibreOffice)",
         "ext": ".odt",
-        "description": "Formato recomendado para Scribus (conserva estilos y títulos)",
-        "pandoc_args": ["-f", "markdown", "-t", "odt", "--standalone"],
+        "description": "Formato recomendado para Scribus (conserva estilos, listas y títulos)",
+        "pandoc_args": ["-f", INPUT_FORMAT, "-t", "odt", "--standalone"],
     },
     "docx": {
         "name": "DOCX (Word)",
         "ext": ".docx",
         "description": "Documento editable de Microsoft Word",
-        "pandoc_args": ["-f", "markdown", "-t", "docx", "--standalone"],
+        "pandoc_args": ["-f", INPUT_FORMAT, "-t", "docx", "--standalone"],
     },
     "html": {
         "name": "HTML5",
         "ext": ".html",
         "description": "Página web con estilos básicos integrados",
-        "pandoc_args": ["-f", "markdown", "-t", "html5", "--standalone"],
+        "pandoc_args": ["-f", INPUT_FORMAT, "-t", "html5", "--standalone"],
     },
     "rtf": {
         "name": "RTF (Rich Text)",
         "ext": ".rtf",
         "description": "Formato de texto enriquecido estándar",
-        "pandoc_args": ["-f", "markdown", "-t", "rtf", "--standalone"],
+        "pandoc_args": ["-f", INPUT_FORMAT, "-t", "rtf", "--standalone"],
     },
     "epub": {
         "name": "EPUB",
         "ext": ".epub",
         "description": "Libro electrónico digital",
-        "pandoc_args": ["-f", "markdown", "-t", "epub", "--standalone"],
+        "pandoc_args": ["-f", INPUT_FORMAT, "-t", "epub", "--standalone"],
     },
     "md": {
         "name": "Markdown (.md)",
@@ -113,4 +119,3 @@ def convert_markdown(
 
     except Exception as e:
         return False, f"Excepción al ejecutar Pandoc: {str(e)}"
-
