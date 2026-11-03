@@ -6,7 +6,7 @@ ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 cd "${ROOT_DIR}"
 
-echo "=== Compilando Pandoc GUI para Linux (Onefile) ==="
+echo "=== Compilando EasyTextConverter para Linux (Onefile) ==="
 
 # Activar entorno virtual si existe
 if [ -d ".venv" ]; then
@@ -14,7 +14,7 @@ if [ -d ".venv" ]; then
 fi
 
 pyinstaller \
-    --name "pandoc-gui" \
+    --name "EasyTextConverter" \
     --onefile \
     --windowed \
     --noconfirm \
@@ -22,5 +22,4 @@ pyinstaller \
     src/main.py
 
 echo "=== Compilación completada con éxito ==="
-echo "El ejecutable se encuentra en: dist/pandoc-gui"
-
+echo "El ejecutable se encuentra en: dist/EasyTextConverter"

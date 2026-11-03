@@ -1,5 +1,5 @@
 """
-Entry point for Pandoc GUI Application.
+Entry point for EasyTextConverter Application.
 """
 
 import sys
@@ -23,8 +23,8 @@ def main():
     )
 
     app = QApplication(sys.argv)
-    app.setApplicationName("Pandoc GUI")
-    app.setOrganizationName("PandocGUI")
+    app.setApplicationName("EasyTextConverter")
+    app.setOrganizationName("EasyTextConverter")
 
     # Set modern clean base font
     default_font = QFont("Segoe UI" if sys.platform == "win32" else "Ubuntu", 10)

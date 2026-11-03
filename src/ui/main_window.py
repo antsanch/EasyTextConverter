@@ -1,5 +1,5 @@
 """
-Main Application Window for Pandoc GUI.
+Main Application Window for EasyTextConverter.
 Provides a clean, modern interface with a full top menu bar (File, Edit, Pandoc, Help),
 a large Markdown text editor, one-click export buttons on top for Scribus (ODT),
 and disk file management (Open, Save, Close, Save As).
@@ -211,7 +211,7 @@ class MainWindow(QMainWindow):
         scribus_guide_action.triggered.connect(self._show_scribus_help)
         help_menu.addAction(scribus_guide_action)
 
-        about_action = QAction("&Acerca de Pandoc GUI", self)
+        about_action = QAction("&Acerca de EasyTextConverter", self)
         about_action.triggered.connect(self._show_about_dialog)
         help_menu.addAction(about_action)
 
@@ -469,7 +469,7 @@ class MainWindow(QMainWindow):
     def _update_window_title(self):
         filename = os.path.basename(self.current_file_path) if self.current_file_path else "Sin título"
         modified_mark = "*" if self.is_modified else ""
-        self.setWindowTitle(f"{filename}{modified_mark} - Pandoc GUI")
+        self.setWindowTitle(f"{filename}{modified_mark} - EasyTextConverter")
 
     def _on_text_changed(self):
         text = self.editor.toPlainText()
@@ -834,10 +834,10 @@ class MainWindow(QMainWindow):
         ver = self.pandoc_version or "no instalado"
         QMessageBox.about(
             self,
-            "Acerca de Pandoc GUI",
-            "<h3>Pandoc GUI</h3>"
-            "<p>Conversor visual de Markdown a ODT (Scribus), DOCX, HTML5, RTF y EPUB.</p>"
-            f"<p><b>Versión de Pandoc:</b> {ver}</p>"
+            "Acerca de EasyTextConverter",
+            "<h3>EasyTextConverter</h3>"
+            "<p>Conversor visual de Markdown a ODT (Scribus / LibreOffice), DOCX, HTML5, RTF y EPUB.</p>"
+            f"<p><b>Motor Pandoc:</b> v{ver}</p>"
             "<p>Multiplataforma para Linux y Windows.</p>"
         )
 

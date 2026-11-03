@@ -14,7 +14,7 @@ import io
 import requests
 from typing import Optional, Callable, Tuple
 
-APP_NAME = "pandoc-gui"
+APP_NAME = "EasyTextConverter"
 
 def get_app_data_dir() -> str:
     """Return platform-specific user data directory for the app."""
@@ -98,6 +98,16 @@ def find_pandoc() -> Tuple[Optional[str], Optional[str]]:
         ver = get_pandoc_version(local_path)
         if ver:
             return local_path, ver
+
+    # 1b. Legacy local path fallback (pandoc-gui)
+    legacy_path = os.path.join(
+        os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"),
+        "pandoc-gui", "bin", "pandoc"
+    )
+    if os.path.isfile(legacy_path):
+        ver = get_pandoc_version(legacy_path)
+        if ver:
+            return legacy_path, ver
 
     # 2. Portable binary next to app
     portable_path = get_portable_binary_path()
@@ -189,7 +199,7 @@ def download_and_extract_pandoc(
         progress_callback(10.0, f"Descargando Pandoc {tag}...")
 
     # Stream download
-    headers = {"User-Agent": "pandoc-gui-downloader"}
+    headers = {"User-Agent": "EasyTextConverter-downloader"}
     with requests.get(download_url, headers=headers, stream=True, timeout=30) as response:
         response.raise_for_status()
         total_length = response.headers.get("content-length")

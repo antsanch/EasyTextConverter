@@ -1,23 +1,27 @@
-# Pandoc GUI
+# EasyTextConverter
 
-Una interfaz gráfica moderna y ligera diseñada para pegar texto en **Markdown** y convertirlo con un solo clic a formatos como **ODT (Scribus)**, **DOCX (Word)**, **HTML5**, **RTF**, **EPUB** y **Markdown original**.
+Una interfaz gráfica moderna y ligera diseñada para redactar, pegar o abrir archivos de texto en **Markdown** y convertirlos con un solo clic a formatos como **ODT (Scribus / LibreOffice)**, **DOCX (Word)**, **HTML5**, **RTF**, **EPUB** y **Markdown original**.
 
 ---
 
 ## ✨ Características Principales
 
-- **Diseñada para Maquetadores de Scribus**:
+- **Diseñada para Maquetadores de Scribus y LibreOffice**:
   - Exportación directa a **ODT (`.odt`)**, el formato estándar y más confiable para importar en Scribus (*Clic derecho en el marco de texto → Obtener texto...*).
-  - Mantiene intacta la jerarquía de títulos (`Heading 1`, `Heading 2`, `Heading 3`...), párrafos, citas, listas, negritas y cursivas, mapeándolos a los estilos de Scribus.
+  - Mantiene intacta la jerarquía de títulos (`Heading 1`, `Heading 2`, `Heading 3`...), párrafos, citas, tablas, negritas, cursivas y listas sin colapsar.
 - **Botones Directos de Guardado**:
   - `[📥 Guardar ODT (Scribus)]` (Acceso prioritario destacado).
   - `[📄 DOCX]`, `[🌐 HTML]`, `[📑 RTF]`, `[📖 EPUB]`, `[📝 MD]`.
+- **Menú Superior Completo**:
+  - **Archivo**: Nuevo (`Ctrl+N`), Abrir (`Ctrl+O`), Guardar (`Ctrl+S`), Guardar como (`Ctrl+Shift+S`), Exportar con Pandoc y Cerrar (`Ctrl+W`).
+  - **Editar**: Deshacer, Rehacer, Cortar, Copiar, Pegar, Seleccionar todo, Reemplazo de `\n` y Limpiar.
+  - **Pandoc**: Comprobación y descarga de actualizaciones en vivo.
+  - **Ayuda**: Guía interactiva de importación para Scribus.
+- **Herramienta `[↵ Reemplazar \n]`**:
+  - Convierte secuencias literales `\n` o `\r\n` (típicas al copiar desde APIs, JSON o terminales) en retornos de carro reales sin alterar ninguna letra ni formato.
 - **Descarga y Detección Automática de Pandoc**:
-  - La aplicación detecta si Pandoc está instalado en tu sistema (`PATH`) o en la carpeta local de la aplicación.
-  - Si no está presente, **descarga e instala automáticamente la versión más reciente desde los releases oficiales de GitHub**, con barra de progreso en vivo.
-- **Multiplataforma**: Funciona de forma idéntica en **Linux** y **Windows**.
-- **Contador en Vivo**: Informa de palabras y caracteres en tiempo real.
-- **Acciones Rápidas**: Atajos de teclado y botones de *Pegar* y *Limpiar*.
+  - Si Pandoc no está instalado, la app lo descarga automáticamente desde los releases oficiales de GitHub con barra de progreso en vivo.
+- **Multiplataforma**: Funciona de forma idéntica y nativa en **Linux** y **Windows**.
 
 ---
 
@@ -29,7 +33,7 @@ Una interfaz gráfica moderna y ligera diseñada para pegar texto en **Markdown*
 ### Instalación y Ejecución
 1. Clona o descarga este repositorio:
    ```bash
-   cd pandoc-gui
+   cd EasyTextConverter
    ```
 
 2. Crea y activa un entorno virtual:
@@ -65,10 +69,10 @@ Ejecuta el script de compilación:
 ./build_scripts/build_linux.sh
 ```
 El binario resultante se encontrará en:
+```text
+dist/EasyTextConverter
 ```
-dist/pandoc-gui
-```
-*(Para ejecutarlo: `./dist/pandoc-gui`)*
+*(Para ejecutarlo: `./dist/EasyTextConverter`)*
 
 ### En Windows
 Haz doble clic en:
@@ -77,11 +81,11 @@ build_scripts\build_windows.bat
 ```
 O desde la consola de Windows:
 ```cmd
-pyinstaller --name "pandoc-gui" --onefile --windowed --noconfirm --clean src\main.py
+pyinstaller --name "EasyTextConverter" --onefile --windowed --noconfirm --clean src\main.py
 ```
 El ejecutable resultante se encontrará en:
-```
-dist\pandoc-gui.exe
+```text
+dist\EasyTextConverter.exe
 ```
 
 ### Compilación Automática en la Nube (GitHub Actions)
@@ -93,11 +97,11 @@ El repositorio incluye un flujo de trabajo en `.github/workflows/build.yml`. Cua
 
 ## 📖 Flujo de Trabajo Recomendado con Scribus
 
-1. Abre **Pandoc GUI** y pega tu artículo o capítulo redactado en Markdown.
+1. Abre **EasyTextConverter** y pega o abre tu archivo Markdown.
 2. Haz clic en el botón superior azul: **`📥 Guardar ODT (Scribus)`**.
 3. Elige la carpeta y el nombre del archivo (ej. `capitulo1.odt`).
 4. Abre **Scribus**:
-   - Dibuja un **Marco de Texto** en tu documento.
+   - Dibuja un **Marco de Texto** en tu página de Scribus.
    - Haz clic derecho sobre el marco de texto y selecciona **Obtener texto...** (*Get Text...*).
    - Selecciona el archivo `.odt` guardado.
    - En el cuadro de diálogo del importador de ODT, asegúrate de marcar la casilla para **importar estilos**.
@@ -108,22 +112,23 @@ El repositorio incluye un flujo de trabajo en `.github/workflows/build.yml`. Cua
 ## 📂 Estructura del Proyecto
 
 ```
-pandoc-gui/
+EasyTextConverter/
 ├── src/
 │   ├── main.py                  # Punto de entrada de la aplicación
 │   ├── core/
-│   │   ├── converter.py         # Conversión de Markdown a ODT/DOCX/HTML/RTF
+│   │   ├── converter.py         # Conversión de Markdown (GFM) a ODT/DOCX/HTML/RTF
+│   │   ├── formatter.py         # Reemplazo limpio de secuencias \n literales
 │   │   └── pandoc_manager.py    # Búsqueda y autodescarga de la última versión de Pandoc
 │   └── ui/
-│       ├── main_window.py       # Ventana principal, editor y botones de exportación
+│       ├── main_window.py       # Ventana principal, menú superior y botones de exportación
 │       └── download_dialog.py   # Modal con progreso de descarga
 ├── build_scripts/
 │   ├── build_linux.sh           # Script para generar ejecutable standalone en Linux
-│   └── build_windows.bat        # Script para generar pandoc-gui.exe en Windows
+│   ├── build_windows.bat        # Script para generar EasyTextConverter.exe en Windows
+│   └── INSTRUCCIONES_COMPILACION.md # Guía detallada de compilación
 ├── .github/
 │   └── workflows/
 │       └── build.yml            # CI/CD para compilar Linux y Windows automáticamente
 ├── requirements.txt
 └── README.md
 ```
-

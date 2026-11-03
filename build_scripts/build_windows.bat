@@ -1,5 +1,5 @@
 @echo off
-echo === Compilando Pandoc GUI para Windows (.exe standalone) ===
+echo === Compilando EasyTextConverter para Windows (.exe standalone) ===
 
 if exist .venv\Scripts\activate.bat (
     call .venv\Scripts\activate.bat
@@ -7,7 +7,7 @@ if exist .venv\Scripts\activate.bat (
 
 pip install -r requirements.txt
 
-pyinstaller --name "pandoc-gui" ^
+pyinstaller --name "EasyTextConverter" ^
     --onefile ^
     --windowed ^
     --noconfirm ^
@@ -15,6 +15,5 @@ pyinstaller --name "pandoc-gui" ^
     src\main.py
 
 echo === Compilacion finalizada ===
-echo El archivo ejecutable esta en: dist\pandoc-gui.exe
+echo El archivo ejecutable esta en: dist\EasyTextConverter.exe
 pause
-

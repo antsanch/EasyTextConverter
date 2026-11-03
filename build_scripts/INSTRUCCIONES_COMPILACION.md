@@ -1,6 +1,6 @@
 # Guía de Compilación de Ejecutables (Linux y Windows)
 
-Este documento detalla los pasos para generar los binarios independientes (*standalone*) de **Pandoc GUI** tanto para **Linux** como para **Windows**. 
+Este documento detalla los pasos para generar los binarios independientes (*standalone*) de **EasyTextConverter** tanto para **Linux** como para **Windows**. 
 
 Ambos ejecutables son completamente autónomos: incluyen todas las dependencias necesarias de Python y PyQt6, por lo que el usuario final **no necesita tener Python instalado**.
 
@@ -15,7 +15,7 @@ Ambos ejecutables son completamente autónomos: incluyen todas las dependencias 
 ### Pasos:
 1. Abre una terminal y sitúate en la raíz del proyecto:
    ```bash
-   cd pandoc-gui
+   cd EasyTextConverter
    ```
 
 2. Ejecuta el script de compilación:
@@ -27,12 +27,12 @@ Ambos ejecutables son completamente autónomos: incluyen todas las dependencias 
 3. **Resultado:**
    El ejecutable autónomo se creará en:
    ```text
-   dist/pandoc-gui
+   dist/EasyTextConverter
    ```
 
 4. **Para ejecutarlo:**
    ```bash
-   ./dist/pandoc-gui
+   ./dist/EasyTextConverter
    ```
 
 ---
@@ -46,7 +46,7 @@ Ambos ejecutables son completamente autónomos: incluyen todas las dependencias 
 - [Python 3.10 o superior para Windows](https://www.python.org/downloads/) (asegúrate de marcar la casilla *"Add python.exe to PATH"* durante la instalación).
 
 ### Método A: Doble Clic (Recomendado)
-1. Copia o descarga la carpeta `pandoc-gui` en tu máquina con Windows.
+1. Copia o descarga la carpeta `EasyTextConverter` en tu máquina con Windows.
 2. Entra a la carpeta `build_scripts` y haz doble clic sobre:
    ```text
    build_windows.bat
@@ -54,9 +54,9 @@ Ambos ejecutables son completamente autónomos: incluyen todas las dependencias 
 3. La ventana de comandos instalará las dependencias y compilará automáticamente el archivo.
 
 ### Método B: Desde la Consola de Windows (CMD o PowerShell)
-1. Abre CMD o PowerShell en la raíz del proyecto `pandoc-gui`:
+1. Abre CMD o PowerShell en la raíz del proyecto:
    ```cmd
-   cd C:\ruta\a\pandoc-gui
+   cd C:\ruta\a\EasyTextConverter
    ```
 2. Instala los requerimientos:
    ```cmd
@@ -64,13 +64,13 @@ Ambos ejecutables son completamente autónomos: incluyen todas las dependencias 
    ```
 3. Ejecuta PyInstaller:
    ```cmd
-   pyinstaller --name "pandoc-gui" --onefile --windowed --noconfirm --clean src\main.py
+   pyinstaller --name "EasyTextConverter" --onefile --windowed --noconfirm --clean src\main.py
    ```
 
 4. **Resultado:**
    El ejecutable standalone se creará en:
    ```text
-   dist\pandoc-gui.exe
+   dist\EasyTextConverter.exe
    ```
    *(Puedes mover este archivo `.exe` a cualquier otra computadora con Windows y funcionará con doble clic).*
 
@@ -91,8 +91,8 @@ Si estás trabajando en Linux y no tienes una máquina con Windows a mano, el pr
 3. En GitHub, ve a la pestaña **Actions**:
    - Verás el flujo **"Build Executables (Linux & Windows)"** ejecutándose en paralelo sobre dos máquinas virtuales reales (Ubuntu y Windows Server).
    - Al cabo de ~2 minutos, podrás descargar directamente los artefactos:
-     - `pandoc-gui-windows-x86_64.exe`
-     - `pandoc-gui-linux-x86_64`
+     - `EasyTextConverter-windows-x86_64.exe`
+     - `EasyTextConverter-linux-x86_64`
 
 ### Para generar una Release con descarga pública:
 Si creas una etiqueta (*tag*) en git:
@@ -108,8 +108,8 @@ GitHub creará automáticamente una página de **Release** en tu repositorio con
 
 ### ¿El ejecutable incluye Pandoc?
 El ejecutable no infla su tamaño con Pandoc de fábrica; en su primer arranque, **la aplicación detecta si Pandoc existe y lo descarga automáticamente desde los releases oficiales de GitHub**, almacenándolo en la carpeta de datos de usuario de cada sistema:
-- En Linux: `~/.local/share/pandoc-gui/bin/pandoc`
-- En Windows: `%LOCALAPPDATA%\pandoc-gui\bin\pandoc.exe`
+- En Linux: `~/.local/share/EasyTextConverter/bin/pandoc`
+- En Windows: `%LOCALAPPDATA%\EasyTextConverter\bin\pandoc.exe`
 Si deseas distribuirlo en modo 100% portable sin conexión a internet, simplemente copia el archivo `pandoc` o `pandoc.exe` dentro de una subcarpeta llamada `bin` junto a tu ejecutable.
 
 ### SmartScreen o Antivirus en Windows
