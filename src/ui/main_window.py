@@ -1,23 +1,25 @@
 """
 Main Application Window for Pandoc GUI.
-Provides a clean, modern interface with a large Markdown text editor,
-one-click export buttons on top, especially optimized for Scribus (ODT),
-and a utility to convert literal '\\n' into real line breaks.
+Provides a clean, modern interface with a full top menu bar (File, Edit, Pandoc, Help),
+a large Markdown text editor, one-click export buttons on top for Scribus (ODT),
+and disk file management (Open, Save, Close, Save As).
 """
 
 import os
 import sys
 import platform
 import subprocess
+from typing import Optional
+
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QPlainTextEdit, QLabel, QFileDialog, QMessageBox, QFrame,
-    QApplication, QSizePolicy
+    QApplication, QMenuBar, QMenu
 )
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont, QKeySequence, QShortcut, QAction
+from PyQt6.QtGui import QFont, QKeySequence, QShortcut, QAction, QCloseEvent
 
-from src.core.pandoc_manager import find_pandoc
+from src.core.pandoc_manager import find_pandoc, get_app_data_dir
 from src.core.converter import convert_markdown, FORMAT_CONFIG
 from src.core.formatter import replace_escaped_newlines, has_escaped_newlines
 from src.ui.download_dialog import PandocDownloadDialog
@@ -26,22 +28,198 @@ from src.ui.download_dialog import PandocDownloadDialog
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Pandoc GUI - Conversor Markdown para Scribus y Documentos")
-        self.resize(980, 700)
-        self.setMinimumSize(780, 500)
+        self.resize(1000, 720)
+        self.setMinimumSize(800, 520)
 
         self.pandoc_path = None
         self.pandoc_version = None
-        self.last_save_dir = os.path.expanduser("~")
+        self.current_file_path: Optional[str] = None
+        self.is_modified = False
+        self.last_dir = os.path.expanduser("~")
 
+        self._init_menu_bar()
         self._init_ui()
+        self._update_window_title()
         self._check_pandoc_status(prompt_download_if_missing=False)
+
+    def _init_menu_bar(self):
+        menubar = self.menuBar()
+        menubar.setStyleSheet("""
+            QMenuBar {
+                background-color: #f8fafc;
+                border-bottom: 1px solid #e2e8f0;
+                font-size: 13px;
+                color: #334155;
+                padding: 2px 6px;
+            }
+            QMenuBar::item {
+                padding: 4px 10px;
+                background: transparent;
+                border-radius: 4px;
+            }
+            QMenuBar::item:selected {
+                background-color: #e2e8f0;
+                color: #0f172a;
+            }
+            QMenu {
+                background-color: #ffffff;
+                border: 1px solid #cbd5e1;
+                border-radius: 6px;
+                padding: 4px;
+                font-size: 12px;
+                color: #1e293b;
+            }
+            QMenu::item {
+                padding: 6px 24px 6px 12px;
+                border-radius: 4px;
+            }
+            QMenu::item:selected {
+                background-color: #eff6ff;
+                color: #1d4ed8;
+            }
+            QMenu::separator {
+                height: 1px;
+                background-color: #e2e8f0;
+                margin: 4px 6px;
+            }
+        """)
+
+        # ------------------ ARCHIVO MENU ------------------
+        file_menu = menubar.addMenu("&Archivo")
+
+        new_action = QAction("&Nuevo", self)
+        new_action.setShortcut(QKeySequence.StandardKey.New)
+        new_action.triggered.connect(self._on_file_new)
+        file_menu.addAction(new_action)
+
+        open_action = QAction("&Abrir archivo...", self)
+        open_action.setShortcut(QKeySequence.StandardKey.Open)
+        open_action.triggered.connect(self._on_file_open)
+        file_menu.addAction(open_action)
+
+        save_action = QAction("&Guardar", self)
+        save_action.setShortcut(QKeySequence.StandardKey.Save)
+        save_action.triggered.connect(self._on_file_save)
+        file_menu.addAction(save_action)
+
+        save_as_action = QAction("Guardar &como...", self)
+        save_as_action.setShortcut(QKeySequence.StandardKey.SaveAs)
+        save_as_action.triggered.connect(self._on_file_save_as)
+        file_menu.addAction(save_as_action)
+
+        file_menu.addSeparator()
+
+        # Export submenu
+        export_menu = QMenu("&Exportar con Pandoc", self)
+        
+        exp_odt = QAction("ODT (Scribus / LibreOffice)...", self)
+        exp_odt.setShortcut("Ctrl+Shift+E")
+        exp_odt.triggered.connect(lambda: self._on_export_clicked("odt"))
+        export_menu.addAction(exp_odt)
+
+        exp_docx = QAction("DOCX (Microsoft Word)...", self)
+        exp_docx.triggered.connect(lambda: self._on_export_clicked("docx"))
+        export_menu.addAction(exp_docx)
+
+        exp_html = QAction("HTML5 (Página Web)...", self)
+        exp_html.triggered.connect(lambda: self._on_export_clicked("html"))
+        export_menu.addAction(exp_html)
+
+        exp_rtf = QAction("RTF (Texto enriquecido)...", self)
+        exp_rtf.triggered.connect(lambda: self._on_export_clicked("rtf"))
+        export_menu.addAction(exp_rtf)
+
+        exp_epub = QAction("EPUB (Libro digital)...", self)
+        exp_epub.triggered.connect(lambda: self._on_export_clicked("epub"))
+        export_menu.addAction(exp_epub)
+
+        file_menu.addMenu(export_menu)
+
+        file_menu.addSeparator()
+
+        close_file_action = QAction("&Cerrar archivo", self)
+        close_file_action.setShortcut("Ctrl+W")
+        close_file_action.triggered.connect(self._on_file_close)
+        file_menu.addAction(close_file_action)
+
+        exit_action = QAction("&Salir", self)
+        exit_action.setShortcut(QKeySequence.StandardKey.Quit)
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
+
+        # ------------------ EDITAR MENU ------------------
+        edit_menu = menubar.addMenu("&Editar")
+
+        undo_action = QAction("&Deshacer", self)
+        undo_action.setShortcut(QKeySequence.StandardKey.Undo)
+        undo_action.triggered.connect(lambda: self.editor.undo())
+        edit_menu.addAction(undo_action)
+
+        redo_action = QAction("&Rehacer", self)
+        redo_action.setShortcut(QKeySequence.StandardKey.Redo)
+        redo_action.triggered.connect(lambda: self.editor.redo())
+        edit_menu.addAction(redo_action)
+
+        edit_menu.addSeparator()
+
+        cut_action = QAction("Cor&tar", self)
+        cut_action.setShortcut(QKeySequence.StandardKey.Cut)
+        cut_action.triggered.connect(lambda: self.editor.cut())
+        edit_menu.addAction(cut_action)
+
+        copy_action = QAction("&Copiar", self)
+        copy_action.setShortcut(QKeySequence.StandardKey.Copy)
+        copy_action.triggered.connect(lambda: self.editor.copy())
+        edit_menu.addAction(copy_action)
+
+        paste_action = QAction("&Pegar", self)
+        paste_action.setShortcut(QKeySequence.StandardKey.Paste)
+        paste_action.triggered.connect(self._paste_clipboard)
+        edit_menu.addAction(paste_action)
+
+        select_all_action = QAction("&Seleccionar todo", self)
+        select_all_action.setShortcut(QKeySequence.StandardKey.SelectAll)
+        select_all_action.triggered.connect(lambda: self.editor.selectAll())
+        edit_menu.addAction(select_all_action)
+
+        edit_menu.addSeparator()
+
+        rep_nl_action = QAction("Reemplazar '\\n' por saltos reales", self)
+        rep_nl_action.setShortcut("Ctrl+Shift+R")
+        rep_nl_action.triggered.connect(self._on_replace_newlines_clicked)
+        edit_menu.addAction(rep_nl_action)
+
+        clear_action = QAction("&Vaciar editor", self)
+        clear_action.triggered.connect(self._clear_text)
+        edit_menu.addAction(clear_action)
+
+        # ------------------ PANDOC MENU ------------------
+        pandoc_menu = menubar.addMenu("&Pandoc")
+
+        check_pandoc_action = QAction("&Comprobar / Actualizar versión de Pandoc...", self)
+        check_pandoc_action.triggered.connect(self._on_pandoc_badge_clicked)
+        pandoc_menu.addAction(check_pandoc_action)
+
+        open_pandoc_dir_action = QAction("Abrir carpeta de Pandoc en el disco", self)
+        open_pandoc_dir_action.triggered.connect(self._open_pandoc_folder)
+        pandoc_menu.addAction(open_pandoc_dir_action)
+
+        # ------------------ AYUDA MENU ------------------
+        help_menu = menubar.addMenu("A&yuda")
+
+        scribus_guide_action = QAction("Guía de importación en &Scribus", self)
+        scribus_guide_action.triggered.connect(self._show_scribus_help)
+        help_menu.addAction(scribus_guide_action)
+
+        about_action = QAction("&Acerca de Pandoc GUI", self)
+        about_action.triggered.connect(self._show_about_dialog)
+        help_menu.addAction(about_action)
 
     def _init_ui(self):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
-        main_layout.setContentsMargins(16, 16, 16, 12)
+        main_layout.setContentsMargins(16, 12, 16, 12)
         main_layout.setSpacing(10)
 
         # 1. TOP TOOLBAR WITH DIRECT SAVE BUTTONS
@@ -51,19 +229,19 @@ class MainWindow(QMainWindow):
         # 2. LARGE MARKDOWN TEXT EDITOR
         self.editor = QPlainTextEdit()
         self.editor.setPlaceholderText(
-            "Pega aquí tu texto en Markdown...\n\n"
+            "Pega o abre aquí tu texto en Markdown...\n\n"
             "Ejemplo:\n"
-            "# Título Principal (se convierte en estilo Heading 1 para Scribus y LibreOffice)\n\n"
-            "Este es un párrafo con texto en **negrita**, *cursiva* y un [enlace](https://...).\n\n"
-            "## Subtítulo de Sección (Heading 2)\n\n"
-            "- Elemento de lista 1\n"
-            "- Elemento de lista 2\n\n"
-            "> Cita en bloque estilizada.\n\n"
-            "💡 Tip: Si tu texto contiene '\\n' literales (provenientes de APIs o código),\n"
-            "haz clic arriba en '↵ Reemplazar \\n' para convertirlos en retornos de carro reales."
+            "### 2. Lectura Explorativa: Topografía y Rastreo\n\n"
+            "La lectura explorativa es una aproximación superficial y rápida...\n\n"
+            "#### A) Barrido Panorámico (Skimming)\n"
+            "Consiste en examinar el texto de forma global:\n"
+            "* ¿Cuál es el tema general del texto?\n"
+            "* ¿Qué tipo de texto es?\n\n"
+            "1. Leer el título y los subtítulos con atención.\n"
+            "2. Leer la primera oración completa del primer párrafo.\n\n"
+            "Haz clic arriba en '📥 Guardar ODT (Scribus)' para exportar con estilos listos para maquetar."
         )
 
-        # Configure font
         mono_font = QFont("Consolas" if platform.system() == "Windows" else "Monospace", 11)
         mono_font.setStyleHint(QFont.StyleHint.Monospace)
         self.editor.setFont(mono_font)
@@ -91,11 +269,6 @@ class MainWindow(QMainWindow):
         status_bar = self._create_bottom_bar()
         main_layout.addWidget(status_bar)
 
-        # Keyboard shortcuts
-        QShortcut(QKeySequence("Ctrl+Shift+S"), self, lambda: self._on_export_clicked("odt"))
-        QShortcut(QKeySequence("Ctrl+Shift+R"), self, self._on_replace_newlines_clicked)
-        QShortcut(QKeySequence("Ctrl+N"), self, self._clear_text)
-
     def _create_top_toolbar(self) -> QWidget:
         toolbar = QWidget()
         layout = QHBoxLayout(toolbar)
@@ -104,7 +277,7 @@ class MainWindow(QMainWindow):
 
         # PROMINENT SCRIBUS / ODT BUTTON
         self.btn_odt = QPushButton("📥 Guardar ODT (Scribus)")
-        self.btn_odt.setToolTip("Exportar a OpenDocument Text (.odt) optimizado para Scribus y LibreOffice (Ctrl+Shift+S)")
+        self.btn_odt.setToolTip("Exportar a OpenDocument Text (.odt) para Scribus y LibreOffice (Ctrl+Shift+E)")
         self.btn_odt.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_odt.setStyleSheet("""
             QPushButton {
@@ -186,12 +359,32 @@ class MainWindow(QMainWindow):
         self.btn_replace_nl.clicked.connect(self._on_replace_newlines_clicked)
         layout.addWidget(self.btn_replace_nl)
 
-        # Spacer to push utility buttons to the right
+        # Spacer
         layout.addStretch()
 
         # UTILITY BUTTONS
+        btn_open = QPushButton("📂 Abrir")
+        btn_open.setToolTip("Abrir archivo Markdown desde el disco (Ctrl+O)")
+        btn_open.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_open.setStyleSheet("""
+            QPushButton {
+                background-color: #ffffff;
+                color: #334155;
+                font-size: 12px;
+                border: 1px solid #cbd5e1;
+                border-radius: 6px;
+                padding: 8px 12px;
+            }
+            QPushButton:hover {
+                background-color: #f8fafc;
+                border-color: #94a3b8;
+            }
+        """)
+        btn_open.clicked.connect(self._on_file_open)
+        layout.addWidget(btn_open)
+
         btn_paste = QPushButton("📋 Pegar")
-        btn_paste.setToolTip("Pegar contenido del portapapeles")
+        btn_paste.setToolTip("Pegar contenido del portapapeles (Ctrl+V)")
         btn_paste.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_paste.setStyleSheet("""
             QPushButton {
@@ -273,11 +466,142 @@ class MainWindow(QMainWindow):
 
         return bar
 
+    def _update_window_title(self):
+        filename = os.path.basename(self.current_file_path) if self.current_file_path else "Sin título"
+        modified_mark = "*" if self.is_modified else ""
+        self.setWindowTitle(f"{filename}{modified_mark} - Pandoc GUI")
+
     def _on_text_changed(self):
         text = self.editor.toPlainText()
         words = len(text.split()) if text.strip() else 0
         chars = len(text)
         self.stats_label.setText(f"{words:,} palabras | {chars:,} caracteres")
+
+        if not self.is_modified:
+            self.is_modified = True
+            self._update_window_title()
+
+    # ------------------ FILE OPERATIONS ------------------
+
+    def _check_unsaved_changes(self) -> bool:
+        """Returns True if it is safe to proceed (saved, discarded, or not modified)."""
+        if not self.is_modified or not self.editor.toPlainText().strip():
+            return True
+
+        filename = os.path.basename(self.current_file_path) if self.current_file_path else "el documento actual"
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle("Cambios no guardados")
+        box.setText(f"¿Deseas guardar los cambios realizados en {filename}?")
+        btn_save = box.addButton("Guardar", QMessageBox.ButtonRole.AcceptRole)
+        btn_discard = box.addButton("Descartar", QMessageBox.ButtonRole.DestructiveRole)
+        box.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+
+        clicked = box.clickedButton()
+        if clicked == btn_save:
+            return self._on_file_save()
+        elif clicked == btn_discard:
+            return True
+        else:
+            return False
+
+    def _on_file_new(self):
+        if not self._check_unsaved_changes():
+            return
+        self.editor.clear()
+        self.current_file_path = None
+        self.is_modified = False
+        self._update_window_title()
+        self._set_status("Nuevo documento en blanco creado.")
+
+    def _on_file_open(self):
+        if not self._check_unsaved_changes():
+            return
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Abrir archivo de texto o Markdown",
+            self.last_dir,
+            "Archivos Markdown y Texto (*.md *.markdown *.txt *.text);;Todos los archivos (*.*)"
+        )
+        if not file_path:
+            return
+
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+        except UnicodeDecodeError:
+            try:
+                with open(file_path, "r", encoding="latin-1") as f:
+                    content = f.read()
+            except Exception as e:
+                QMessageBox.critical(self, "Error al leer archivo", f"No se pudo leer el archivo:\n{e}")
+                return
+        except Exception as e:
+            QMessageBox.critical(self, "Error al leer archivo", f"No se pudo leer el archivo:\n{e}")
+            return
+
+        self.editor.setPlainText(content)
+        self.current_file_path = file_path
+        self.is_modified = False
+        self.last_dir = os.path.dirname(file_path)
+        self._update_window_title()
+        self._set_status(f"Archivo abierto: {os.path.basename(file_path)}")
+
+    def _on_file_save(self) -> bool:
+        if self.current_file_path:
+            return self._save_to_path(self.current_file_path)
+        else:
+            return self._on_file_save_as()
+
+    def _on_file_save_as(self) -> bool:
+        default_name = self.current_file_path or os.path.join(self.last_dir, "documento.md")
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Guardar archivo Markdown",
+            default_name,
+            "Archivo Markdown (*.md);;Archivo de Texto (*.txt);;Todos los archivos (*.*)"
+        )
+        if not file_path:
+            return False
+
+        if not file_path.lower().endswith((".md", ".markdown", ".txt")):
+            file_path += ".md"
+
+        return self._save_to_path(file_path)
+
+    def _save_to_path(self, file_path: str) -> bool:
+        try:
+            content = self.editor.toPlainText()
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            self.current_file_path = file_path
+            self.is_modified = False
+            self.last_dir = os.path.dirname(file_path)
+            self._update_window_title()
+            self._set_status(f"Guardado en: {file_path}")
+            return True
+        except Exception as e:
+            QMessageBox.critical(self, "Error al guardar", f"No se pudo guardar el archivo:\n{e}")
+            return False
+
+    def _on_file_close(self):
+        if not self._check_unsaved_changes():
+            return
+        self.editor.clear()
+        self.current_file_path = None
+        self.is_modified = False
+        self._update_window_title()
+        self._set_status("Archivo cerrado.")
+
+    def closeEvent(self, event: QCloseEvent):
+        if self._check_unsaved_changes():
+            event.accept()
+        else:
+            event.ignore()
+
+    # ------------------ UTILITY & CONVERSION ------------------
 
     def _on_replace_newlines_clicked(self):
         content = self.editor.toPlainText()
@@ -382,6 +706,10 @@ class MainWindow(QMainWindow):
             return self._check_pandoc_status(prompt_download_if_missing=False)
         return False
 
+    def _open_pandoc_folder(self):
+        data_dir = get_app_data_dir()
+        self._open_folder(data_dir)
+
     def _set_status(self, message: str, is_error: bool = False):
         color = "#dc2626" if is_error else "#1e293b"
         self.status_msg_label.setStyleSheet(f"color: {color}; font-size: 12px; font-weight: {'500' if is_error else 'normal'};")
@@ -430,7 +758,11 @@ class MainWindow(QMainWindow):
         ext = fmt["ext"]
         filter_str = f"{fmt['name']} (*{ext});;Todos los archivos (*.*)"
 
-        default_filename = os.path.join(self.last_save_dir, f"documento{ext}")
+        base_name = "documento"
+        if self.current_file_path:
+            base_name = os.path.splitext(os.path.basename(self.current_file_path))[0]
+
+        default_filename = os.path.join(self.last_dir, f"{base_name}{ext}")
         output_file, _ = QFileDialog.getSaveFileName(
             self,
             f"Guardar como {fmt['name']}",
@@ -441,11 +773,10 @@ class MainWindow(QMainWindow):
         if not output_file:
             return
 
-        # Ensure correct extension
         if not output_file.lower().endswith(ext):
             output_file += ext
 
-        self.last_save_dir = os.path.dirname(output_file)
+        self.last_dir = os.path.dirname(output_file)
         self._set_status(f"Convirtiendo a {fmt['name']}...")
         QApplication.processEvents()
 
@@ -486,6 +817,29 @@ class MainWindow(QMainWindow):
         else:
             self._set_status("Error al convertir.", is_error=True)
             QMessageBox.critical(self, "Error de Conversión", message)
+
+    def _show_scribus_help(self):
+        QMessageBox.information(
+            self,
+            "Guía de Importación en Scribus",
+            "Cómo importar tu documento ODT en Scribus conservando todos los estilos:\n\n"
+            "1. En Scribus, inserta un 'Marco de Texto' en tu página.\n"
+            "2. Haz clic derecho sobre el marco y selecciona 'Obtener texto...' (Get Text...).\n"
+            "3. Selecciona tu archivo .odt generado.\n"
+            "4. En el diálogo del importador de ODT, asegúrate de marcar 'Importar estilos'.\n\n"
+            "¡Listo! Los títulos H1, H2, H3, viñetas, listas numeradas y negritas se mapearán a los Estilos de Párrafo de Scribus (F3)."
+        )
+
+    def _show_about_dialog(self):
+        ver = self.pandoc_version or "no instalado"
+        QMessageBox.about(
+            self,
+            "Acerca de Pandoc GUI",
+            "<h3>Pandoc GUI</h3>"
+            "<p>Conversor visual de Markdown a ODT (Scribus), DOCX, HTML5, RTF y EPUB.</p>"
+            f"<p><b>Versión de Pandoc:</b> {ver}</p>"
+            "<p>Multiplataforma para Linux y Windows.</p>"
+        )
 
     def _open_file(self, filepath: str):
         try:
