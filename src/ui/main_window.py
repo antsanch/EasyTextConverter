@@ -1,8 +1,8 @@
 """
 Main Application Window for EasyTextConverter.
-Provides a clean, modern interface with a full top menu bar (File, Edit, Pandoc, Help),
+Provides a clean, modern interface with a full top menu bar (File, Edit, Options, Pandoc, Help),
 a large Markdown text editor, one-click export buttons on top for Scribus (ODT),
-and disk file management (Open, Save, Close, Save As).
+and configurable file naming (Auto-name from first line or ask with dialog).
 """
 
 import os
@@ -16,12 +16,16 @@ from PyQt6.QtWidgets import (
     QPlainTextEdit, QLabel, QFileDialog, QMessageBox, QFrame,
     QApplication, QMenuBar, QMenu
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QSettings
 from PyQt6.QtGui import QFont, QKeySequence, QShortcut, QAction, QCloseEvent
 
 from src.core.pandoc_manager import find_pandoc, get_app_data_dir
 from src.core.converter import convert_markdown, FORMAT_CONFIG
-from src.core.formatter import replace_escaped_newlines, has_escaped_newlines
+from src.core.formatter import (
+    replace_escaped_newlines,
+    has_escaped_newlines,
+    sanitize_first_line_as_filename
+)
 from src.ui.download_dialog import PandocDownloadDialog
 
 
@@ -31,11 +35,16 @@ class MainWindow(QMainWindow):
         self.resize(1000, 720)
         self.setMinimumSize(800, 520)
 
+        # Persistent user settings
+        self.settings = QSettings("EasyTextConverter", "EasyTextConverter")
+        self.use_first_line_as_name = self.settings.value("use_first_line_as_name", False, type=bool)
+        saved_dir = self.settings.value("last_dir", None, type=str)
+        self.last_dir = saved_dir if saved_dir and os.path.isdir(saved_dir) else os.path.expanduser("~")
+
         self.pandoc_path = None
         self.pandoc_version = None
         self.current_file_path: Optional[str] = None
         self.is_modified = False
-        self.last_dir = os.path.expanduser("~")
 
         self._init_menu_bar()
         self._init_ui()
@@ -192,6 +201,21 @@ class MainWindow(QMainWindow):
         clear_action = QAction("&Vaciar editor", self)
         clear_action.triggered.connect(self._clear_text)
         edit_menu.addAction(clear_action)
+
+        # ------------------ OPCIONES MENU ------------------
+        options_menu = menubar.addMenu("&Opciones")
+
+        self.action_use_first_line = QAction("Usar primera línea como nombre de archivo", self)
+        self.action_use_first_line.setCheckable(True)
+        self.action_use_first_line.setChecked(self.use_first_line_as_name)
+        self.action_use_first_line.toggled.connect(self._on_toggle_use_first_line)
+        options_menu.addAction(self.action_use_first_line)
+
+        options_menu.addSeparator()
+
+        select_folder_action = QAction("Seleccionar carpeta de guardado predeterminada...", self)
+        select_folder_action.triggered.connect(self._on_select_default_folder)
+        options_menu.addAction(select_folder_action)
 
         # ------------------ PANDOC MENU ------------------
         pandoc_menu = menubar.addMenu("&Pandoc")
@@ -435,15 +459,28 @@ class MainWindow(QMainWindow):
         self.status_msg_label.setStyleSheet("color: #475569; font-size: 12px;")
         layout.addWidget(self.status_msg_label, stretch=1)
 
+        # File naming indicator badge button
+        self.btn_name_mode = QPushButton()
+        self.btn_name_mode.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._update_name_mode_badge()
+        self.btn_name_mode.clicked.connect(lambda: self.action_use_first_line.setChecked(not self.action_use_first_line.isChecked()))
+        layout.addWidget(self.btn_name_mode)
+
+        # Vertical divider line
+        divider1 = QFrame()
+        divider1.setFrameShape(QFrame.Shape.VLine)
+        divider1.setStyleSheet("color: #cbd5e1;")
+        layout.addWidget(divider1)
+
         self.stats_label = QLabel("0 palabras | 0 caracteres")
         self.stats_label.setStyleSheet("color: #64748b; font-size: 12px;")
         layout.addWidget(self.stats_label)
 
         # Vertical divider line
-        divider = QFrame()
-        divider.setFrameShape(QFrame.Shape.VLine)
-        divider.setStyleSheet("color: #cbd5e1;")
-        layout.addWidget(divider)
+        divider2 = QFrame()
+        divider2.setFrameShape(QFrame.Shape.VLine)
+        divider2.setStyleSheet("color: #cbd5e1;")
+        layout.addWidget(divider2)
 
         # Pandoc status badge & button
         self.pandoc_badge = QPushButton("Buscando Pandoc...")
@@ -465,6 +502,61 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.pandoc_badge)
 
         return bar
+
+    def _update_name_mode_badge(self):
+        if self.use_first_line_as_name:
+            self.btn_name_mode.setText("🏷️ Nombre: 1ª Línea (Auto)")
+            self.btn_name_mode.setToolTip("Modo automático activo: se usará la 1ª línea como nombre. Haz clic para cambiar.")
+            self.btn_name_mode.setStyleSheet("""
+                QPushButton {
+                    background-color: #f0fdf4;
+                    color: #166534;
+                    font-size: 11px;
+                    font-weight: 500;
+                    border: 1px solid #bbf7d0;
+                    border-radius: 4px;
+                    padding: 4px 10px;
+                }
+                QPushButton:hover {
+                    background-color: #dcfce7;
+                }
+            """)
+        else:
+            self.btn_name_mode.setText("💬 Nombre: Preguntar siempre")
+            self.btn_name_mode.setToolTip("Modo manual activo: se abre el diálogo para elegir nombre. Haz clic para cambiar.")
+            self.btn_name_mode.setStyleSheet("""
+                QPushButton {
+                    background-color: #f8fafc;
+                    color: #475569;
+                    font-size: 11px;
+                    border: 1px solid #cbd5e1;
+                    border-radius: 4px;
+                    padding: 4px 10px;
+                }
+                QPushButton:hover {
+                    background-color: #f1f5f9;
+                }
+            """)
+
+    def _on_toggle_use_first_line(self, checked: bool):
+        self.use_first_line_as_name = checked
+        self.settings.setValue("use_first_line_as_name", checked)
+        self._update_name_mode_badge()
+        if checked:
+            self._set_status("✓ Modo automático activado: se usará la primera línea como nombre de archivo.")
+        else:
+            self._set_status("Modo manual activado: se preguntará el nombre del archivo al guardar.")
+
+    def _on_select_default_folder(self):
+        folder = QFileDialog.getExistingDirectory(
+            self,
+            "Seleccionar carpeta de guardado predeterminada",
+            self.last_dir
+        )
+        if folder:
+            self.last_dir = folder
+            self.settings.setValue("last_dir", folder)
+            self._set_status(f"Carpeta de guardado actualizada: {folder}")
 
     def _update_window_title(self):
         filename = os.path.basename(self.current_file_path) if self.current_file_path else "Sin título"
@@ -546,6 +638,7 @@ class MainWindow(QMainWindow):
         self.current_file_path = file_path
         self.is_modified = False
         self.last_dir = os.path.dirname(file_path)
+        self.settings.setValue("last_dir", self.last_dir)
         self._update_window_title()
         self._set_status(f"Archivo abierto: {os.path.basename(file_path)}")
 
@@ -556,7 +649,12 @@ class MainWindow(QMainWindow):
             return self._on_file_save_as()
 
     def _on_file_save_as(self) -> bool:
-        default_name = self.current_file_path or os.path.join(self.last_dir, "documento.md")
+        content = self.editor.toPlainText()
+        default_name = self.current_file_path
+        if not default_name:
+            base_name = sanitize_first_line_as_filename(content) if self.use_first_line_as_name else "documento"
+            default_name = os.path.join(self.last_dir, f"{base_name}.md")
+
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "Guardar archivo Markdown",
@@ -579,6 +677,7 @@ class MainWindow(QMainWindow):
             self.current_file_path = file_path
             self.is_modified = False
             self.last_dir = os.path.dirname(file_path)
+            self.settings.setValue("last_dir", self.last_dir)
             self._update_window_title()
             self._set_status(f"Guardado en: {file_path}")
             return True
@@ -758,17 +857,54 @@ class MainWindow(QMainWindow):
         ext = fmt["ext"]
         filter_str = f"{fmt['name']} (*{ext});;Todos los archivos (*.*)"
 
-        base_name = "documento"
-        if self.current_file_path:
-            base_name = os.path.splitext(os.path.basename(self.current_file_path))[0]
+        # Determine target file path based on "use_first_line_as_name" option
+        output_file = None
 
-        default_filename = os.path.join(self.last_dir, f"{base_name}{ext}")
-        output_file, _ = QFileDialog.getSaveFileName(
-            self,
-            f"Guardar como {fmt['name']}",
-            default_filename,
-            filter_str
-        )
+        if self.use_first_line_as_name:
+            # Auto-generate file name from first line
+            base_name = sanitize_first_line_as_filename(content)
+            auto_path = os.path.join(self.last_dir, f"{base_name}{ext}")
+
+            if os.path.exists(auto_path):
+                # Prompt if already exists
+                box = QMessageBox(self)
+                box.setIcon(QMessageBox.Icon.Question)
+                box.setWindowTitle("Archivo existente")
+                box.setText(
+                    f"El archivo ya existe:\n{auto_path}\n\n"
+                    "¿Deseas sobreescribirlo o elegir otro nombre?"
+                )
+                btn_overwrite = box.addButton("Sobreescribir", QMessageBox.ButtonRole.AcceptRole)
+                btn_choose = box.addButton("Elegir otro nombre...", QMessageBox.ButtonRole.ActionRole)
+                box.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+                box.exec()
+
+                if box.clickedButton() == btn_overwrite:
+                    output_file = auto_path
+                elif box.clickedButton() == btn_choose:
+                    output_file, _ = QFileDialog.getSaveFileName(
+                        self,
+                        f"Guardar como {fmt['name']}",
+                        auto_path,
+                        filter_str
+                    )
+                else:
+                    return
+            else:
+                output_file = auto_path
+        else:
+            # Manual mode: Always ask with save dialog
+            base_name = "documento"
+            if self.current_file_path:
+                base_name = os.path.splitext(os.path.basename(self.current_file_path))[0]
+
+            default_filename = os.path.join(self.last_dir, f"{base_name}{ext}")
+            output_file, _ = QFileDialog.getSaveFileName(
+                self,
+                f"Guardar como {fmt['name']}",
+                default_filename,
+                filter_str
+            )
 
         if not output_file:
             return
@@ -777,6 +913,7 @@ class MainWindow(QMainWindow):
             output_file += ext
 
         self.last_dir = os.path.dirname(output_file)
+        self.settings.setValue("last_dir", self.last_dir)
         self._set_status(f"Convirtiendo a {fmt['name']}...")
         QApplication.processEvents()
 
